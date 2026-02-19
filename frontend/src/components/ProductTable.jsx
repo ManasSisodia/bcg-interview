@@ -5,7 +5,7 @@
  * Even: bg-card (#111827), Odd: bg-[#0F1A2E], hover: bg-[#162235]
  * Smaller muted checkboxes, gray action icons.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Eye, Pencil, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
 import {
@@ -21,8 +21,17 @@ const ProductTable = ({
   pagination = {},
   currentPage = 1,
   onPageChange,
+  canEdit = true,
+  canDelete = true,
+  onSelectionChange,
+  initialSelectedRows = [],
 }) => {
-  const [selectedRows, setSelectedRows] = useState([]);
+  const [selectedRows, setSelectedRows] = useState(initialSelectedRows);
+
+  // Notify parent when selection changes
+  useEffect(() => {
+    if (onSelectionChange) onSelectionChange(selectedRows);
+  }, [selectedRows, onSelectionChange]);
 
   const handleSelectAll = (e) => {
     setSelectedRows(e.target.checked ? products.map((p) => p.id) : []);
@@ -117,9 +126,9 @@ const ProductTable = ({
                   )}
                   <TableCell>
                     <div className="flex items-center justify-center gap-3">
-                      <button onClick={() => onView(product)} title="View" className="text-[#6B7280] hover:text-[#E5E7EB] transition-all duration-200"><Eye size={16} /></button>
-                      <button onClick={() => onEdit(product)} title="Edit" className="text-[#6B7280] hover:text-[#E5E7EB] transition-all duration-200"><Pencil size={16} /></button>
-                      <button onClick={() => onDelete(product.id)} title="Delete" className="text-red-500 hover:text-red-400 transition-all duration-200"><Trash2 size={16} /></button>
+                      <button onClick={() => onView(product)} title="View" className="text-muted hover:text-[#E5E7EB] transition-all duration-200"><Eye size={16} /></button>
+                      {canEdit && <button onClick={() => onEdit(product)} title="Edit" className="text-muted hover:text-[#E5E7EB] transition-all duration-200"><Pencil size={16} /></button>}
+                      {canDelete && <button onClick={() => onDelete(product.id)} title="Delete" className="text-red-500 hover:text-red-400 transition-all duration-200"><Trash2 size={16} /></button>}
                     </div>
                   </TableCell>
                 </TableRow>

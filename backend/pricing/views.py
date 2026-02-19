@@ -74,8 +74,8 @@ class RoleBasedProductPermission(permissions.BasePermission):
             if role == 'admin':
                 return True  # Admin can do everything
             elif role == 'supplier':
-                # Suppliers can read + update, but NOT create or delete
-                return request.method in ['GET', 'PUT', 'PATCH', 'HEAD', 'OPTIONS']
+                # Suppliers can read + create + update, but NOT delete
+                return request.method in ['GET', 'POST', 'PUT', 'PATCH', 'HEAD', 'OPTIONS']
             elif role == 'buyer':
                 # Buyers can only read
                 return request.method in permissions.SAFE_METHODS

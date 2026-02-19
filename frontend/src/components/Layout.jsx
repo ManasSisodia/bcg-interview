@@ -97,6 +97,9 @@ export const ActionBar = ({
   onFilterApply,
   onFilterClear,
   activeFilterCount = 0,
+  canCreate = true,
+  disableDemandForecast = false,
+  isOptimizationPage = false,
 }) => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [minPrice, setMinPrice] = useState('');
@@ -193,15 +196,25 @@ export const ActionBar = ({
           )}
         </div>
 
-        <Button variant="primary" onClick={onAddProduct} className="gap-1.5">
-          <Plus size={14} />
-          <span>Add New Products</span>
-        </Button>
+        {canCreate && !isOptimizationPage && (
+          <Button variant="primary" onClick={onAddProduct} className="gap-1.5">
+            <Plus size={14} />
+            <span>Add New Products</span>
+          </Button>
+        )}
 
-        <Button variant="secondary" onClick={onDemandForecast} className="gap-1.5">
-          <BarChart3 size={14} />
-          <span>Demand Forecast</span>
-        </Button>
+        {!isOptimizationPage && (
+          <Button
+            variant="secondary"
+            onClick={onDemandForecast}
+            className="gap-1.5"
+            disabled={disableDemandForecast}
+            title={disableDemandForecast ? 'Select products first' : 'View demand forecast'}
+          >
+            <BarChart3 size={14} />
+            <span>Demand Forecast</span>
+          </Button>
+        )}
       </div>
     </div>
   );

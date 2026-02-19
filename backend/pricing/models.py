@@ -94,10 +94,12 @@ class UserProfile(models.Model):
 class Product(models.Model):
     product_id = models.IntegerField(
         unique=True,
+        db_index=True,
         help_text="Unique numeric ID for the product"
     )
     name = models.CharField(
         max_length=255,
+        db_index=True,
         help_text="Product name (e.g., 'Eco-Friendly Water Bottle')"
     )
     description = models.TextField(
@@ -111,10 +113,12 @@ class Product(models.Model):
     selling_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
+        db_index=True,
         help_text="Current selling price to customers"
     )
     category = models.CharField(
         max_length=100,
+        db_index=True,
         help_text="Product category (e.g., 'Electronics', 'Apparel')"
     )
     stock_available = models.IntegerField(
@@ -142,3 +146,8 @@ class Product(models.Model):
         ordering = ['product_id']
         verbose_name = "Product"
         verbose_name_plural = "Products"
+        indexes = [
+            models.Index(fields=['category', 'selling_price'], name='idx_cat_price'),
+            models.Index(fields=['name', 'category'], name='idx_name_cat'),
+        ]
+

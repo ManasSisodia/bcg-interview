@@ -3,14 +3,21 @@
  * -------
  * Root — login → landing → products | optimization
  *
- * SOLID: component/service per concern
- * KISS: string page state
- * DRY: centralized services, reusable shadcn primitives
- *
- * Premium SaaS style: soft dark, consistent spacing, no harsh contrasts.
+ * Features:
+ * - React Router (HashRouter) for /products and /optimization
+ * - Demand forecast: disabled until products selected, shows only for selected
+ * - Chart.js bar chart on optimization page
+ * - Role-based UI
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
+import toast, { Toaster } from 'react-hot-toast';
+import { Bar } from 'react-chartjs-2';
+import {
+  Chart as ChartJS, CategoryScale, LinearScale, BarElement,
+  Title, Tooltip as ChartTooltip, Legend,
+} from 'chart.js';
 
 import authService from './services/authService';
 import productService from './services/productService';
@@ -27,9 +34,15 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from './components/ui/table';
 
-export default function App() {
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, ChartTooltip, Legend);
+
+/* ─── Inner App (needs router context) ─── */
+function AppInner() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [currentUser, setCurrentUser] = useState(null);
-  const [page, setPage] = useState('login');
+  const [page, setPage] = useState('login'); // login | landing | products | optimization
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({});
@@ -45,10 +58,36 @@ export default function App() {
   const [showForecastColumn, setShowForecastColumn] = useState(false);
   const [priceFilter, setPriceFilter] = useState({ min_price: '', max_price: '' });
 
+  // Selection tracking — accumulate full product objects across pages
+  const [selectedProductIds, setSelectedProductIds] = useState([]);
+  const [selectedProductsMap, setSelectedProductsMap] = useState({});
+
+  // RBAC
+  const userRole = currentUser?.role || 'admin';
+  const canCreate = userRole === 'admin' || userRole === 'supplier';
+  const canEdit = userRole === 'admin' || userRole === 'supplier';
+  const canDelete = userRole === 'admin';
+
+  // Sync page state with router path
+  useEffect(() => {
+    const hash = location.pathname;
+    if (hash === '/products' && page !== 'products') setPage('products');
+    else if (hash === '/optimization' && page !== 'optimization') setPage('optimization');
+  }, [location.pathname]);
+
+  const navigateTo = (target) => {
+    setPage(target);
+    if (target === 'products') navigate('/products');
+    else if (target === 'optimization') navigate('/optimization');
+  };
+
   useEffect(() => {
     if (authService.isAuthenticated()) {
       setCurrentUser(authService.getUser());
-      setPage('landing');
+      const hash = location.pathname;
+      if (hash === '/products') setPage('products');
+      else if (hash === '/optimization') setPage('optimization');
+      else setPage('landing');
     }
   }, []);
 
@@ -87,11 +126,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (page === 'products') fetchCategories();
+    if (page === 'products' || page === 'optimization') fetchCategories();
   }, [fetchCategories, page]);
 
   const handleLoginSuccess = (user) => { setCurrentUser(user); setPage('landing'); };
-  const handleLogout = () => { authService.logout(); setCurrentUser(null); setProducts([]); setPage('login'); };
+  const handleLogout = () => { authService.logout(); setCurrentUser(null); setProducts([]); setPage('login'); navigate('/'); };
 
   const handleSearchChange = (e) => {
     const value = e.target.value;
@@ -102,70 +141,134 @@ export default function App() {
   const handleCategoryChange = (e) => { setCategoryFilter(e.target.value); setCurrentPageNum(1); };
 
   const handleAddProduct = async (formData) => {
-    try { await productService.createProduct(formData); setShowAddModal(false); fetchProducts(); fetchCategories(); }
-    catch (err) { alert(err.response?.data ? JSON.stringify(err.response.data) : 'Failed to add product'); }
+    try { await productService.createProduct(formData); setShowAddModal(false); fetchProducts(); fetchCategories(); toast.success('Product added successfully'); }
+    catch (err) { toast.error(err.response?.data?.detail || err.response?.data ? JSON.stringify(err.response.data) : 'Failed to add product'); }
   };
 
   const handleEditProduct = async (formData) => {
-    try { await productService.updateProduct(editingProduct.id, formData); setEditingProduct(null); setShowAddModal(false); fetchProducts(); fetchCategories(); }
-    catch (err) { alert(err.response?.data ? JSON.stringify(err.response.data) : 'Failed to update'); }
+    try { await productService.updateProduct(editingProduct.id, formData); setEditingProduct(null); setShowAddModal(false); fetchProducts(); fetchCategories(); toast.success('Product updated successfully'); }
+    catch (err) { toast.error(err.response?.data?.detail || 'Failed to update product'); }
   };
 
   const handleDeleteProduct = async (id) => {
     if (!window.confirm('Are you sure you want to delete this product?')) return;
-    try { await productService.deleteProduct(id); fetchProducts(); fetchCategories(); }
-    catch (err) { alert('Failed to delete product'); }
+    try { await productService.deleteProduct(id); fetchProducts(); fetchCategories(); toast.success('Product deleted'); }
+    catch (err) { toast.error(err.response?.data?.detail || 'Failed to delete product'); }
   };
 
   const handleOpenEdit = (product) => { setEditingProduct(product); setShowAddModal(true); };
   const handleCloseModal = () => { setShowAddModal(false); setEditingProduct(null); };
 
+  // When ProductTable fires onSelectionChange, merge into our cross-page map
+  const handleSelectionChange = useCallback((ids) => {
+    setSelectedProductIds(ids);
+    setSelectedProductsMap((prev) => {
+      const next = { ...prev };
+      // Add newly selected products from current page
+      ids.forEach((id) => {
+        if (!next[id]) {
+          const p = products.find((prod) => prod.id === id);
+          if (p) next[id] = p;
+        }
+      });
+      // Remove deselected products that are on the current page
+      const currentPageIds = products.map((p) => p.id);
+      currentPageIds.forEach((id) => {
+        if (!ids.includes(id)) delete next[id];
+      });
+      return next;
+    });
+  }, [products]);
+
+  // All selected products across all pages
+  const allSelectedProducts = Object.values(selectedProductsMap);
+
   if (page === 'login') return <LoginPage onLoginSuccess={handleLoginSuccess} />;
-  if (page === 'landing') return <LandingPage onNavigate={setPage} />;
+  if (page === 'landing') return <LandingPage onNavigate={navigateTo} />;
 
   const userName = currentUser?.username || 'Guest';
+  const pageTitles = { products: 'Products', optimization: 'Optimization' };
+  const headerTitles = { products: 'Create and Manage Product', optimization: 'Pricing Optimization' };
 
-  return (
-    <div className="h-screen flex flex-col bg-background">
-      <Navbar userName={userName} pageTitle={page === 'products' ? 'Products' : 'Optimization'} onLogout={handleLogout} />
+  /* ── Optimization chart data ── */
+  const optimizationChartData = {
+    labels: products.map((p) => p.name?.length > 18 ? p.name.slice(0, 15) + '...' : p.name),
+    datasets: [
+      { label: 'Cost Price', data: products.map((p) => parseFloat(p.cost_price) || 0), backgroundColor: 'rgba(107, 114, 128, 0.7)', borderColor: '#6B7280', borderWidth: 1, borderRadius: 4 },
+      { label: 'Selling Price', data: products.map((p) => parseFloat(p.selling_price) || 0), backgroundColor: 'rgba(139, 92, 246, 0.7)', borderColor: '#8B5CF6', borderWidth: 1, borderRadius: 4 },
+      { label: 'Optimized Price', data: products.map((p) => parseFloat(p.optimized_price) || 0), backgroundColor: 'rgba(20, 184, 166, 0.7)', borderColor: '#14B8A6', borderWidth: 1, borderRadius: 4 },
+    ],
+  };
 
-      <PageHeaderBar
-        title={page === 'products' ? 'Create and Manage Product' : 'Pricing Optimization'}
-        onBack={() => setPage('landing')}
-      />
+  const chartOptions = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'bottom', labels: { color: '#9CA3AF', font: { size: 12 }, usePointStyle: true, pointStyle: 'circle', padding: 20 } },
+      tooltip: { backgroundColor: '#1F2937', titleColor: '#E5E7EB', bodyColor: '#E5E7EB', borderColor: '#243041', borderWidth: 1, cornerRadius: 8, padding: 12, callbacks: { label: (ctx) => `${ctx.dataset.label}: $${ctx.raw.toFixed(2)}` } },
+    },
+    scales: {
+      x: { ticks: { color: '#9CA3AF', font: { size: 10 }, maxRotation: 45 }, grid: { color: '#243041', drawBorder: false } },
+      y: { ticks: { color: '#9CA3AF', font: { size: 11 }, callback: (v) => `$${v}` }, grid: { color: '#243041', drawBorder: false } },
+    },
+  };
 
-      {page === 'products' && (
-        <ActionBar
-          showForecast={showForecastColumn}
-          onToggleForecast={() => setShowForecastColumn(!showForecastColumn)}
-          onSearchChange={handleSearchChange}
-          categoryValue={categoryFilter}
-          onCategoryChange={handleCategoryChange}
-          categories={categories}
-          onAddProduct={() => { setEditingProduct(null); setShowAddModal(true); }}
-          onDemandForecast={() => setShowForecastModal(true)}
-          onFilterApply={(f) => { setPriceFilter(f); setCurrentPageNum(1); }}
-          onFilterClear={() => { setPriceFilter({ min_price: '', max_price: '' }); setCurrentPageNum(1); }}
-          activeFilterCount={(priceFilter.min_price ? 1 : 0) + (priceFilter.max_price ? 1 : 0)}
-        />
-      )}
+  /* ── Shared action bar for both pages ── */
+  const renderActionBar = () => (
+    <ActionBar
+      showForecast={showForecastColumn}
+      onToggleForecast={() => setShowForecastColumn(!showForecastColumn)}
+      onSearchChange={handleSearchChange}
+      categoryValue={categoryFilter}
+      onCategoryChange={handleCategoryChange}
+      categories={categories}
+      onAddProduct={canCreate ? () => { setEditingProduct(null); setShowAddModal(true); } : undefined}
+      onDemandForecast={() => setShowForecastModal(true)}
+      disableDemandForecast={Object.keys(selectedProductsMap).length === 0}
+      onFilterApply={(f) => { setPriceFilter(f); setCurrentPageNum(1); }}
+      onFilterClear={() => { setPriceFilter({ min_price: '', max_price: '' }); setCurrentPageNum(1); }}
+      activeFilterCount={(priceFilter.min_price ? 1 : 0) + (priceFilter.max_price ? 1 : 0)}
+      canCreate={canCreate}
+      isOptimizationPage={page === 'optimization'}
+    />
+  );
 
+  /* ── Products Page ── */
+  const renderProductsPage = () => (
+    <>
+      {renderActionBar()}
       <main className="flex-1 flex flex-col min-h-0">
         {loading ? (
           <div className="flex-1 flex items-center justify-center"><div className="spinner" /></div>
-        ) : page === 'products' ? (
+        ) : (
           <ProductTable
             products={products}
             showForecast={showForecastColumn}
             onView={(p) => setViewingProduct(p)}
-            onEdit={handleOpenEdit}
-            onDelete={handleDeleteProduct}
+            onEdit={canEdit ? handleOpenEdit : undefined}
+            onDelete={canDelete ? handleDeleteProduct : undefined}
             pagination={pagination}
             currentPage={currentPageNum}
             onPageChange={setCurrentPageNum}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onSelectionChange={handleSelectionChange}
+            initialSelectedRows={selectedProductIds}
           />
+        )}
+      </main>
+    </>
+  );
+
+  /* ── Optimization Page ── */
+  const renderOptimizationPage = () => (
+    <>
+      {renderActionBar()}
+      <main className="flex-1 flex flex-col min-h-0 overflow-auto">
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center"><div className="spinner" /></div>
         ) : (
-          <div className="flex-1 overflow-auto px-8">
+          <div className="px-8 space-y-6 pb-8">
+            {/* Table — optimized prices from API */}
             <div className="rounded-xl border border-border bg-card overflow-hidden">
               <Table>
                 <TableHeader>
@@ -175,6 +278,7 @@ export default function App() {
                     <TableHead className="min-w-[220px]">Description</TableHead>
                     <TableHead>Cost Price</TableHead>
                     <TableHead>Selling Price</TableHead>
+                    {showForecastColumn && <TableHead>Demand Forecast</TableHead>}
                     <TableHead>Optimized Price</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -186,9 +290,14 @@ export default function App() {
                       <TableCell className="text-[#9CA3AF] max-w-[280px]">
                         <span className="block whitespace-normal line-clamp-2">{p.description || '-'}</span>
                       </TableCell>
-                      <TableCell className="text-[#E5E7EB]">$ {p.cost_price}</TableCell>
+                      <TableCell className="text-[#9CA3AF]">$ {p.cost_price}</TableCell>
                       <TableCell className="text-[#E5E7EB]">$ {p.selling_price}</TableCell>
-                      <TableCell className="font-semibold text-accent">$ {(p.selling_price * 0.95).toFixed(2)}</TableCell>
+                      {showForecastColumn && (
+                        <TableCell className="text-[#E5E7EB]">{p.demand_forecast}</TableCell>
+                      )}
+                      <TableCell>
+                        <span className="font-semibold text-accent">$ {p.optimized_price}</span>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -197,9 +306,21 @@ export default function App() {
           </div>
         )}
       </main>
+    </>
+  );
 
+  return (
+    <div className="h-screen flex flex-col bg-background">
+      <Navbar userName={userName} pageTitle={pageTitles[page] || ''} onLogout={handleLogout} />
+      <PageHeaderBar title={headerTitles[page] || ''} onBack={() => { setPage('landing'); navigate('/'); }} />
 
+      <Routes>
+        <Route path="/products" element={renderProductsPage()} />
+        <Route path="/optimization" element={renderOptimizationPage()} />
+        <Route path="*" element={renderProductsPage()} />
+      </Routes>
 
+      {/* Modals */}
       <AddProductModal
         isOpen={showAddModal}
         onClose={handleCloseModal}
@@ -210,7 +331,7 @@ export default function App() {
       <DemandForecastModal
         isOpen={showForecastModal}
         onClose={() => setShowForecastModal(false)}
-        products={products}
+        products={allSelectedProducts.length > 0 ? allSelectedProducts : []}
       />
 
       {viewingProduct && (
@@ -226,12 +347,15 @@ export default function App() {
                 ['Category', viewingProduct.category],
                 ['Cost Price', `$ ${viewingProduct.cost_price}`],
                 ['Selling Price', `$ ${viewingProduct.selling_price}`],
+                ['Optimized Price', `$ ${viewingProduct.optimized_price}`],
+                ['Demand Forecast', viewingProduct.demand_forecast],
+                ['Customer Rating', `${viewingProduct.customer_rating} / 5`],
                 ['Description', viewingProduct.description || '-'],
                 ['Available Stock', Number(viewingProduct.stock_available).toLocaleString()],
                 ['Units Sold', Number(viewingProduct.units_sold).toLocaleString()],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-start gap-3">
-                  <span className="text-[#9CA3AF] text-sm w-28 shrink-0">{label}:</span>
+                  <span className="text-[#9CA3AF] text-sm w-32 shrink-0">{label}:</span>
                   <span className="text-[#E5E7EB] text-sm">{value}</span>
                 </div>
               ))}
@@ -240,5 +364,23 @@ export default function App() {
         </div>
       )}
     </div>
+  );
+}
+
+/* ─── Root: wraps in HashRouter ─── */
+export default function App() {
+  return (
+    <HashRouter>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 3000,
+          style: { background: '#1F2937', color: '#E5E7EB', border: '1px solid #243041', borderRadius: '10px', fontSize: '14px' },
+          success: { iconTheme: { primary: '#14B8A6', secondary: '#E5E7EB' } },
+          error: { iconTheme: { primary: '#EF4444', secondary: '#E5E7EB' } },
+        }}
+      />
+      <AppInner />
+    </HashRouter>
   );
 }
