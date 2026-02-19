@@ -87,6 +87,15 @@ const productService = {
     const products = data.results || data || [];
     return [...new Set(products.map((p) => p.category).filter(Boolean))];
   },
+
+  /**
+   * Bulk-update demand_forecast and optimized_price for multiple products.
+   * @param {Array} products — [{ id, demand_forecast, optimized_price }, ...]
+   */
+  async bulkForecast(products) {
+    const response = await api.post('/products/bulk-forecast/', { products });
+    return response.data;
+  },
 };
 
 export default productService;

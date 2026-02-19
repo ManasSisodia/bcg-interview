@@ -62,6 +62,9 @@ function AppInner() {
   const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [selectedProductsMap, setSelectedProductsMap] = useState({});
 
+  // Products with computed demand forecast + optimized price (calculated on click)
+  const [forecastedProducts, setForecastedProducts] = useState([]);
+
   // RBAC
   const userRole = currentUser?.role || 'admin';
   const canCreate = userRole === 'admin' || userRole === 'supplier';
@@ -183,6 +186,39 @@ function AppInner() {
   // All selected products across all pages
   const allSelectedProducts = Object.values(selectedProductsMap);
 
+  // ── Demand Forecast: compute values, save to DB, refresh table ──
+  const handleDemandForecast = async () => {
+    if (allSelectedProducts.length === 0) return;
+    const computed = allSelectedProducts.map((p) => {
+      const unitsSold = parseFloat(p.units_sold) || 0;
+      const stock = parseFloat(p.stock_available) || 0;
+      const cost = parseFloat(p.cost_price) || 0;
+      const sell = parseFloat(p.selling_price) || 0;
+      // Formula: demand_forecast = units_sold × 1.2 + stock_available × 0.1
+      const demandForecast = Math.round(unitsSold * 1.2 + stock * 0.1);
+      // Formula: optimized_price = cost + (sell - cost) × demand / (demand + stock)
+      const optimizedPrice = stock + demandForecast > 0
+        ? parseFloat((cost + (sell - cost) * (demandForecast / (demandForecast + stock))).toFixed(2))
+        : parseFloat(sell.toFixed(2));
+      return { ...p, demand_forecast: demandForecast, optimized_price: optimizedPrice };
+    });
+
+    // Save to database
+    try {
+      await productService.bulkForecast(
+        computed.map((p) => ({ id: p.id, demand_forecast: p.demand_forecast, optimized_price: p.optimized_price }))
+      );
+    } catch (err) {
+      toast.error('Failed to save forecast to database');
+    }
+
+    setForecastedProducts(computed);
+    setShowForecastModal(true);
+    toast.success(`Demand forecast calculated for ${computed.length} product(s)`);
+    // Refresh table so DB values show up
+    fetchProducts();
+  };
+
   if (page === 'login') return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   if (page === 'landing') return <LandingPage onNavigate={navigateTo} />;
 
@@ -222,7 +258,7 @@ function AppInner() {
       onCategoryChange={handleCategoryChange}
       categories={categories}
       onAddProduct={canCreate ? () => { setEditingProduct(null); setShowAddModal(true); } : undefined}
-      onDemandForecast={() => setShowForecastModal(true)}
+      onDemandForecast={handleDemandForecast}
       disableDemandForecast={Object.keys(selectedProductsMap).length === 0}
       onFilterApply={(f) => { setPriceFilter(f); setCurrentPageNum(1); }}
       onFilterClear={() => { setPriceFilter({ min_price: '', max_price: '' }); setCurrentPageNum(1); }}
@@ -259,55 +295,63 @@ function AppInner() {
     </>
   );
 
-  /* ── Optimization Page ── */
-  const renderOptimizationPage = () => (
-    <>
-      {renderActionBar()}
-      <main className="flex-1 flex flex-col min-h-0 overflow-auto">
-        {loading ? (
-          <div className="flex-1 flex items-center justify-center"><div className="spinner" /></div>
-        ) : (
-          <div className="px-8 space-y-6 pb-8">
-            {/* Table — optimized prices from API */}
-            <div className="rounded-xl border border-border bg-card overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent border-border">
-                    <TableHead>Product Name</TableHead>
-                    <TableHead>Product Category</TableHead>
-                    <TableHead className="min-w-[220px]">Description</TableHead>
-                    <TableHead>Cost Price</TableHead>
-                    <TableHead>Selling Price</TableHead>
-                    {showForecastColumn && <TableHead>Demand Forecast</TableHead>}
-                    <TableHead>Optimized Price</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {products.map((p, idx) => (
-                    <TableRow key={p.id} className={idx % 2 === 0 ? 'bg-card' : 'bg-[#0F1A2E]'}>
-                      <TableCell className="text-[#E5E7EB] font-medium">{p.name}</TableCell>
-                      <TableCell className="text-[#9CA3AF]">{p.category}</TableCell>
-                      <TableCell className="text-[#9CA3AF] max-w-[280px]">
-                        <span className="block whitespace-normal line-clamp-2">{p.description || '-'}</span>
-                      </TableCell>
-                      <TableCell className="text-[#9CA3AF]">$ {p.cost_price}</TableCell>
-                      <TableCell className="text-[#E5E7EB]">$ {p.selling_price}</TableCell>
-                      {showForecastColumn && (
-                        <TableCell className="text-[#E5E7EB]">{p.demand_forecast}</TableCell>
-                      )}
-                      <TableCell>
-                        <span className="font-semibold text-accent">$ {p.optimized_price}</span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+  /* ── Optimization Page — only shows forecasted products ── */
+  const renderOptimizationPage = () => {
+    // Use frontend-computed forecasts if available, otherwise fall back to DB data
+    const optimProducts = forecastedProducts.length > 0
+      ? forecastedProducts
+      : products.filter((p) => parseFloat(p.demand_forecast) > 0);
+    return (
+      <>
+        {renderActionBar()}
+        <main className="flex-1 flex flex-col min-h-0 overflow-auto">
+          {optimProducts.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-muted gap-3">
+              <span className="text-lg">No forecasted products yet</span>
+              <span className="text-sm text-[#6B7280]">Go to Products page → select products → click Demand Forecast</span>
             </div>
-          </div>
-        )}
-      </main>
-    </>
-  );
+          ) : (
+            <div className="px-8 space-y-6 pb-8">
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent border-border">
+                      <TableHead>Product Name</TableHead>
+                      <TableHead>Product Category</TableHead>
+                      <TableHead className="min-w-[220px]">Description</TableHead>
+                      <TableHead>Cost Price</TableHead>
+                      <TableHead>Selling Price</TableHead>
+                      {showForecastColumn && <TableHead>Demand Forecast</TableHead>}
+                      <TableHead>Optimized Price</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {optimProducts.map((p, idx) => (
+                      <TableRow key={p.id} className={idx % 2 === 0 ? 'bg-card' : 'bg-[#0F1A2E]'}>
+                        <TableCell className="text-[#E5E7EB] font-medium">{p.name}</TableCell>
+                        <TableCell className="text-[#9CA3AF]">{p.category}</TableCell>
+                        <TableCell className="text-[#9CA3AF] max-w-[280px]">
+                          <span className="block whitespace-normal line-clamp-2">{p.description || '-'}</span>
+                        </TableCell>
+                        <TableCell className="text-[#9CA3AF]">$ {p.cost_price}</TableCell>
+                        <TableCell className="text-[#E5E7EB]">$ {p.selling_price}</TableCell>
+                        {showForecastColumn && (
+                          <TableCell className="text-[#E5E7EB] font-medium">{p.demand_forecast}</TableCell>
+                        )}
+                        <TableCell>
+                          <span className="font-semibold text-accent">$ {p.optimized_price}</span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </main>
+      </>
+    );
+  };
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -331,7 +375,7 @@ function AppInner() {
       <DemandForecastModal
         isOpen={showForecastModal}
         onClose={() => setShowForecastModal(false)}
-        products={allSelectedProducts.length > 0 ? allSelectedProducts : []}
+        products={forecastedProducts.length > 0 ? forecastedProducts : []}
       />
 
       {viewingProduct && (

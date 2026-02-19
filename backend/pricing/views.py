@@ -126,6 +126,37 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 
 # ═══════════════════════════════════════════
+# 1b) BULK FORECAST — Save computed demand_forecast + optimized_price
+# ═══════════════════════════════════════════
+class BulkForecastView(APIView):
+    """
+    POST /api/products/bulk-forecast/
+
+    Accepts a list of { id, demand_forecast, optimized_price } and
+    updates each product in the database.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        items = request.data.get('products', [])
+        if not items:
+            return Response({'detail': 'No products provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        updated = 0
+        for item in items:
+            try:
+                product = Product.objects.get(id=item['id'])
+                product.demand_forecast = item.get('demand_forecast', product.demand_forecast)
+                product.optimized_price = item.get('optimized_price', product.optimized_price)
+                product.save(update_fields=['demand_forecast', 'optimized_price'])
+                updated += 1
+            except Product.DoesNotExist:
+                continue
+
+        return Response({'detail': f'{updated} product(s) updated.'}, status=status.HTTP_200_OK)
+
+
+# ═══════════════════════════════════════════
 # 2) REGISTER VIEW — User Signup
 # ═══════════════════════════════════════════
 class RegisterView(APIView):
