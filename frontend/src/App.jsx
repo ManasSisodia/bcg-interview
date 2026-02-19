@@ -196,10 +196,14 @@ function AppInner() {
       const sell = parseFloat(p.selling_price) || 0;
       // Formula: demand_forecast = units_sold × 1.2 + stock_available × 0.1
       const demandForecast = Math.round(unitsSold * 1.2 + stock * 0.1);
-      // Formula: optimized_price = cost + (sell - cost) × demand / (demand + stock)
-      const optimizedPrice = stock + demandForecast > 0
-        ? parseFloat((cost + (sell - cost) * (demandForecast / (demandForecast + stock))).toFixed(2))
-        : parseFloat(sell.toFixed(2));
+      // Demand-supply ratio
+      const demandRatio = (demandForecast + stock) > 0 ? demandForecast / (demandForecast + stock) : 0;
+      // Margin-preserving demand-responsive pricing:
+      // optimized_price = cost + margin × (base_margin + sensitivity × demand_ratio)
+      // base_margin=0.7 ensures at least 70% of margin is preserved
+      // sensitivity=0.3 allows demand to push price up by another 30%
+      const margin = sell - cost;
+      const optimizedPrice = parseFloat((cost + margin * (0.7 + 0.3 * demandRatio)).toFixed(2));
       return { ...p, demand_forecast: demandForecast, optimized_price: optimizedPrice };
     });
 

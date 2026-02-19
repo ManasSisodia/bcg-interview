@@ -41,33 +41,17 @@ class ProductSerializer(serializers.ModelSerializer):
         if 'customer_rating' not in validated_data:
             validated_data['customer_rating'] = 4
 
-        # Compute demand_forecast: units_sold * 1.2 + stock_available * 0.1
+        # demand_forecast and optimized_price default to 0
+        # They are calculated on the frontend via Demand Forecast action
         if 'demand_forecast' not in validated_data or validated_data['demand_forecast'] is None:
-            units_sold = int(validated_data.get('units_sold', 0))
-            stock = int(validated_data.get('stock_available', 0))
-            validated_data['demand_forecast'] = int(units_sold * 1.2 + stock * 0.1)
+            validated_data['demand_forecast'] = 0
 
-        # Compute optimized_price: cost_price * 0.3 + selling_price * 0.7 (weighted blend)
         if 'optimized_price' not in validated_data or validated_data['optimized_price'] is None:
-            cost = float(validated_data.get('cost_price', 0))
-            sell = float(validated_data.get('selling_price', 0))
-            validated_data['optimized_price'] = round(cost * 0.3 + sell * 0.7, 2)
+            validated_data['optimized_price'] = 0
 
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        # Recompute demand_forecast if units_sold or stock changed
-        units_sold = int(validated_data.get('units_sold', instance.units_sold))
-        stock = int(validated_data.get('stock_available', instance.stock_available))
-        if 'demand_forecast' not in validated_data:
-            validated_data['demand_forecast'] = int(units_sold * 1.2 + stock * 0.1)
-
-        # Recompute optimized_price if prices changed
-        cost = float(validated_data.get('cost_price', instance.cost_price))
-        sell = float(validated_data.get('selling_price', instance.selling_price))
-        if 'optimized_price' not in validated_data:
-            validated_data['optimized_price'] = round(cost * 0.3 + sell * 0.7, 2)
-
         return super().update(instance, validated_data)
 
 
