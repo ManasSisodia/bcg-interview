@@ -1,0 +1,182 @@
+###############################################
+# REST API Client — Price Optimization Tool
+# =============================================
+# This file documents ALL available API endpoints.
+#
+# HOW TO USE:
+# - Install the "REST Client" extension in VS Code
+# - Click "Send Request" above any request to test it
+# - Or copy the curl command and run in terminal
+#
+# BASE URL: http://localhost:8000/api
+###############################################
+
+
+### ═══════════════════════════════════════════
+### AUTHENTICATION ENDPOINTS
+### ═══════════════════════════════════════════
+
+
+### Register a new user
+# Creates a new account with username, email, password, and role.
+# Roles: "admin", "buyer", "supplier"
+# Returns: JWT tokens (access + refresh) + user info
+POST http://localhost:8000/api/auth/register/
+Content-Type: application/json
+
+{
+    "username": "john_buyer",
+    "email": "john@example.com",
+    "password": "password123",
+    "role": "buyer",
+    "phone": "+1234567890",
+    "company": "Acme Corp"
+}
+
+
+### Login with existing user
+# Authenticates with username + password.
+# Returns: JWT access token + refresh token + user info with role
+POST http://localhost:8000/api/auth/login/
+Content-Type: application/json
+
+{
+    "username": "admin",
+    "password": "admin123"
+}
+
+
+### Get current user profile (requires JWT token)
+# Returns: username, email, role, phone, company
+# Replace <ACCESS_TOKEN> with the token from login response
+GET http://localhost:8000/api/auth/profile/
+Authorization: Bearer <ACCESS_TOKEN>
+
+
+### Refresh an expired JWT token
+# When your access token expires (after 1 hour), use the refresh
+# token to get a new access token without logging in again.
+POST http://localhost:8000/api/auth/token/refresh/
+Content-Type: application/json
+
+{
+    "refresh": "<REFRESH_TOKEN>"
+}
+
+
+### List all available roles
+# Returns: array of roles with id, name, description
+GET http://localhost:8000/api/auth/roles/
+
+
+### ═══════════════════════════════════════════
+### PRODUCT ENDPOINTS (CRUD)
+### ═══════════════════════════════════════════
+
+
+### List all products
+# Returns all products ordered by product_id
+GET http://localhost:8000/api/products/
+
+
+### List products with PAGINATION
+# page = page number (starts at 1)
+# page_size = number of items per page (default: 10)
+GET http://localhost:8000/api/products/?page=1&page_size=5
+
+
+### Search products by name or description
+# Uses partial matching (case-insensitive)
+GET http://localhost:8000/api/products/?search=water
+
+
+### Filter products by category
+# Exact match on category name
+GET http://localhost:8000/api/products/?category=Electronics
+
+
+### Search + Filter combined
+# Search for "headphone" in the "Electronics" category
+GET http://localhost:8000/api/products/?search=headphone&category=Electronics
+
+
+### Order products by a field
+# Ascending: ?ordering=selling_price
+# Descending: ?ordering=-selling_price
+GET http://localhost:8000/api/products/?ordering=-selling_price
+
+
+### Get a single product by ID
+GET http://localhost:8000/api/products/1/
+
+
+### Create a new product (requires admin role)
+# All fields are required
+POST http://localhost:8000/api/products/
+Content-Type: application/json
+Authorization: Bearer <ACCESS_TOKEN>
+
+{
+    "product_id": 11,
+    "name": "Smart Thermostat",
+    "description": "WiFi-enabled smart thermostat with energy savings.",
+    "cost_price": 35.00,
+    "selling_price": 89.99,
+    "category": "Home Automation",
+    "stock_available": 200,
+    "units_sold": 50,
+    "customer_rating": 4,
+    "demand_forecast": 80,
+    "optimized_price": 85.00
+}
+
+
+### Update an existing product (requires admin or supplier role)
+# PUT replaces ALL fields — send the complete product object
+PUT http://localhost:8000/api/products/1/
+Content-Type: application/json
+Authorization: Bearer <ACCESS_TOKEN>
+
+{
+    "product_id": 1,
+    "name": "Eco-Friendly Water Bottle",
+    "description": "Updated description — now with bamboo cap.",
+    "cost_price": 6.00,
+    "selling_price": 14.99,
+    "category": "Outdoor & Sports",
+    "stock_available": 450,
+    "units_sold": 220,
+    "customer_rating": 5,
+    "demand_forecast": 280,
+    "optimized_price": 13.50
+}
+
+
+### Partial update (PATCH) — only send fields to change
+PATCH http://localhost:8000/api/products/1/
+Content-Type: application/json
+Authorization: Bearer <ACCESS_TOKEN>
+
+{
+    "selling_price": 15.99,
+    "stock_available": 480
+}
+
+
+### Delete a product (requires admin role)
+DELETE http://localhost:8000/api/products/1/
+Authorization: Bearer <ACCESS_TOKEN>
+
+
+### ═══════════════════════════════════════════
+### ROLE-BASED ACCESS SUMMARY
+### ═══════════════════════════════════════════
+# 
+# | Role     | GET (Read) | POST (Create) | PUT/PATCH (Update) | DELETE |
+# |----------|------------|---------------|---------------------|--------|
+# | Admin    | ✅         | ✅            | ✅                  | ✅     |
+# | Buyer    | ✅         | ❌            | ❌                  | ❌     |
+# | Supplier | ✅         | ❌            | ✅                  | ❌     |
+# | Anon     | ✅         | ❌            | ❌                  | ❌     |
+#
+### ═══════════════════════════════════════════

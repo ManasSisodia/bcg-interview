@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0F172A;
+  --color-card: #111827;
+  --color-elevated: #1F2937;
+  --color-tableHeader: #0B1220;
+  --color-border: #243041;
+  --color-accent: #14B8A6;
+  --color-accentHover: #0D9488;
+  --color-danger: #EF4444;
+  --color-muted: #6B7280;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-background);
+  color: #E5E7EB;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-background); }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  background-size: 16px;
+  padding-right: 30px !important;
+}
+
+.spinner {
+  border: 3px solid rgba(20, 184, 166, 0.15);
+  border-top: 3px solid var(--color-accent);
+  border-radius: 50%;
+  width: 32px; height: 32px;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
