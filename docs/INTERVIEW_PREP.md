@@ -28,9 +28,9 @@
 │   Port 5173    │                         │  Port 8000     │
 │                │                         │                │
 │  App.jsx       │   GET /api/products/    │  views.py      │
-│  ProductTable  │   POST /api/products/   │  serializers.py│
-│  LoginPage     │   POST /api/auth/login/ │  models.py     │
-│  Layout        │   POST /api/bulk-forecast│ urls.py       │
+│  ProductsPage  │   POST /api/products/   │  serializers.py│
+│  OptimizationPg│   POST /api/auth/login/ │  models.py     │
+│  Hooks Layer   │   POST /api/bulk-forct  │ urls.py        │
 └────────────────┘                         └───────┬────────┘
                                                    │
                                            ┌───────┴────────┐
@@ -45,16 +45,14 @@
 | ----------------------------- | ------------------------------------------------ | ---------------------- |
 | **`models.py`**               | 3 tables: Product (11 fields), Role, UserProfile | "The database schema"  |
 | **`views.py`**                | API endpoints: CRUD + Auth + BulkForecast        | "The request handlers" |
-| **`serializers.py`**          | Converts DB objects ↔ JSON                       | "The translator"       |
-| **`urls.py`**                 | Maps URLs to views                               | "The router"           |
-| **`App.jsx`**                 | Main component, state management, routing        | "The brain"            |
-| **`ProductTable.jsx`**        | Product list with selection, pagination          | "The table"            |
-| **`Layout.jsx`**              | Sidebar + Header + Action bar                    | "The shell"            |
-| **`LoginPage.jsx`**           | Login + Registration forms                       | "The door"             |
+| **`App.jsx`**                 | Authentication shell and high-level routing      | "The router"           |
+| **`ProductsPage.jsx`**        | State management for the main product list       | "Main work area"       |
+| **`OptimizationPage.jsx`**    | State management for the optimized prices list   | "Optimization area"    |
+| **`hooks/`**                  | Reusable logic for data and selection            | "The muscles"          |
+| **`ProductTable.jsx`**        | Reusable grid for showing products               | "The data grid"        |
 | **`DemandForecastModal.jsx`** | Chart.js line chart for forecast                 | "The graph"            |
 | **`api.js`**                  | Axios instance with JWT interceptor              | "The HTTP client"      |
 | **`authService.js`**          | Login/logout, token storage                      | "The auth manager"     |
-| **`productService.js`**       | Product CRUD + bulk forecast API calls           | "The data layer"       |
 
 ### The 3 Models (memorize these)
 
@@ -195,23 +193,29 @@ Get something running first. Add features incrementally. Talk while you code.
 
 > "It's a standard REST architecture. React frontend talks to Django REST Framework backend via JSON over HTTP. Auth is JWT-based. The DB is SQLite managed through Django's ORM."
 
-#### "How does authentication work?"
+#### "Why did you move state from App.jsx to Pages?"
 
 → Say:
 
-> "User logs in with username/password. Backend validates credentials and returns a JWT access token (15 min) and refresh token (1 day). Frontend stores the access token in localStorage and attaches it to every API request via an Axios interceptor. When it expires, the interceptor automatically uses the refresh token to get a new access token."
+> "Decentralizing state makes the app more scalable and easier to debug. Each page (ProductsPage, OptimizationPage) now handles its own data via custom hooks. This prevents 'prop drilling' and ensures that App.jsx stays clean, only handling global things like Authentication and high-level Routing."
 
-#### "Explain your RBAC implementation"
+#### "What are custom hooks and why did you use them?"
 
 → Say:
 
-> "Three roles: admin, buyer, supplier. On the backend, I wrote a custom DRF permission class called `RoleBasedProductPermission` that checks the user's role from their profile and allows/denies HTTP methods accordingly. On the frontend, I check the role to conditionally show/hide UI elements like the Add and Delete buttons. Both layers enforce it — the UI hides things, but the API also blocks unauthorized requests."
+> "Custom hooks like `useProducts` and `useProductSelection` allow us to reuse logic across different screens. Instead of writing the same fetch or selection code twice, we package it into a hook. This keeps our components focused on the UI, while the hooks handle the data logic."
 
-#### "Explain the pricing formula"
+#### "How does your RBAC implementation work?"
 
-→ Say (use the slider analogy from the simplified doc):
+→ Say:
 
-> "There are two formulas. For demand forecast, I use historical sales with a 20% growth factor plus a small inventory signal. For optimized price, I calculate a demand-supply ratio, then set the price within 70-100% of the profit margin based on that ratio. High demand pushes price up, high stock pushes it down, but there's always a 70% margin floor to prevent unprofitable pricing."
+> "Three roles: admin, buyer, supplier. On the backend, I wrote a custom DRF permission class called `RoleBasedProductPermission` that checks the user's role and allows/denies HTTP methods (e.g., Buyers can't POST or DELETE). On the frontend, the `userRole` is passed from App.jsx to the child pages, which then hide or show buttons based on that role. Both layers work together for security."
+
+#### "Explain the pricing formula and how you filter for optimized products"
+
+→ Say:
+
+> "The formula uses a demand-supply ratio to calculate a price within 70-100% of the profit margin. On the backend, I customized the `get_queryset` method in the `ProductViewSet` so that it can filter by `is_optimized=true`. This allows the Optimization page to only show products that actually have a calculated optimized price greater than zero."
 
 ---
 

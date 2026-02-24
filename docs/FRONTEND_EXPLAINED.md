@@ -64,7 +64,7 @@ const ProductTable = ({ products, onDelete }) => { ... }
 ```
 frontend/src/
 ├── main.jsx                    ← Entry point (renders App)
-├── App.jsx                     ← THE BRAIN — all state lives here
+├── App.jsx                     ← THE ROUTER — handles Login/Nav logic
 ├── index.css                   ← All styles (Tailwind config)
 │
 ├── services/                   ← Talks to the backend
@@ -72,14 +72,22 @@ frontend/src/
 │   ├── authService.js          ← Login/logout/token management
 │   └── productService.js       ← Product CRUD API calls
 │
+├── hooks/                      ← Reusable logic (The "Muscles")
+│   ├── useProducts.js          ← Handles fetching, searching, filtering
+│   └── useProductSelection.js  ← Handles checkboxes & cross-page memory
+│
+├── pages/                      ← Main Screen Components
+│   ├── ProductsPage.jsx        ← State & layout for product management
+│   └── OptimizationPage.jsx    ← State & layout for optimized price list
+│
 └── components/                 ← Visual pieces
     ├── LoginPage.jsx           ← Login + Register form
-    ├── LandingPage.jsx         ← Welcome screen with 2 big buttons
+    ├── LandingPage.jsx         ← Welcome screen
     ├── Layout.jsx              ← Navbar + Header + ActionBar
-    ├── ProductTable.jsx        ← The product list table
-    ├── AddProductModal.jsx     ← Add/Edit product form popup
-    ├── DemandForecastModal.jsx ← Forecast chart + table popup
-    └── ui/                     ← Tiny reusable pieces (button, input, table, etc.)
+    ├── ProductTable.jsx        ← The table grid
+    ├── AddProductModal.jsx     ← Add/Edit popup
+    ├── DemandForecastModal.jsx ← Forecast chart popup
+    └── ui/                     ← Reusable buttons, inputs, etc.
 ```
 
 ---
@@ -130,20 +138,17 @@ frontend/src/
 
 ```
 1. User clicks checkboxes on ProductTable
-2. ProductTable updates its internal selectedRows state
-3. ProductTable calls onSelectionChange(selectedIds) — prop from App.jsx
-4. App.jsx: handleSelectionChange runs:
+2. ProductTable calls onSelectionChange(selectedIds) — prop from ProductsPage
+3. ProductsPage: handleSelectionChange (via useProductSelection hook):
    - Updates selectedProductIds (array of IDs)
    - Updates selectedProductsMap (object: { id → full product data })
-   - This MAP accumulates across pages (page 1 selections survive on page 2)
-5. User clicks "Demand Forecast" button
-6. App.jsx: handleDemandForecast runs:
+   - This MAP survives page changes (page 1 selections survive on page 2)
+4. User clicks "Demand Forecast" button
+5. ProductsPage: handleDemandForecast runs:
    - Gets all products from selectedProductsMap
-   - Computes demand_forecast + optimized_price using formulas
+   - Computes demand_forecast + optimized_price
    - Calls productService.bulkForecast() to save to DB
-   - setForecastedProducts(computed)
-   - setShowForecastModal(true) → DemandForecastModal appears
-   - fetchProducts() → refreshes table with new DB values
+   - fetchProducts() → refreshes the table with new values
 ```
 
 ### 🟢 Adding a Product
@@ -163,76 +168,52 @@ frontend/src/
 
 ## 4. State Management — Where Data Lives
 
-**ALL important state lives in `App.jsx` (the AppInner function).** Here's every piece of state and what it does:
+**State is now DECENTRALIZED. It lives only where it's needed.**
 
-### Authentication State
+### Global State (App.jsx)
+
+Only handles things that apply to the WHOLE app.
 
 ```
 currentUser          → { id, username, email, role } or null
 page                 → 'login' | 'landing' | 'products' | 'optimization'
 ```
 
-- `currentUser` is set after login, cleared on logout
-- `page` controls which screen you see (it's synced with the URL via React Router)
+### Page-Specific State (ProductsPage / OptimizationPage)
 
-### Product Data State
+Each page uses **Custom Hooks** to manage its own data.
 
-```
-products             → Array of product objects from current API page
-loading              → true while fetching, false when done
-pagination           → { count, next, previous } from API response
-currentPageNum       → Which page of results we're viewing (1, 2, 3...)
-categories           → ['Electronics', 'Apparel', ...] for the dropdown
-```
-
-- `products` gets REPLACED every time you change page, search, or filter
-- It's always the current page's 10 products, not all products
-
-### Search & Filter State
+#### `useProducts` hook handles:
 
 ```
-searchQuery          → What the user typed in the search box
-categoryFilter       → Selected category from dropdown ('Electronics', '', etc.)
-priceFilter          → { min_price: '', max_price: '' }
-searchTimeout        → useRef — holds the debounce timer ID
+products             → Array of product objects for current view
+loading              → Loading spinner status
+pagination           → Total count, next/prev links
+search/filter        → searchQuery, categoryFilter, priceFilter
 ```
 
-- When any of these change → `fetchProducts()` re-runs automatically (via useEffect)
-- Search is **debounced** (waits 500ms after typing stops before sending request)
+- **Optimization Filtering:** `OptimizationPage` tells this hook `isOptimized: true`. The hook then sends a special flag to the backend to only show products with an optimized price!
 
-### Modal State
-
-```
-showAddModal         → true = show the Add/Edit product popup
-editingProduct       → null = adding new, { ...product } = editing existing
-viewingProduct       → The product being viewed in detail popup
-showForecastModal    → true = show the demand forecast chart popup
-showForecastColumn   → true = show "Calculated Demand" column in table
-```
-
-### Selection State (cross-page)
+#### `useProductSelection` hook handles:
 
 ```
-selectedProductIds   → [3, 5, 8] — just the IDs (passed to ProductTable)
-selectedProductsMap  → { 3: {...}, 5: {...}, 8: {...} } — full product DATA by ID
-forecastedProducts   → Array of products with computed demand + optimized price
+selectedProductIds   → [3, 5, 8] — Current checkboxes
+selectedProductsMap  → { 3: {...}, 5: {...} } — CROSS-PAGE memory
 ```
 
-- `selectedProductIds` is what ProductTable uses to know which checkboxes are checked
-- `selectedProductsMap` is the KEY to cross-page persistence — it accumulates products from ALL pages
-- `forecastedProducts` is set when user clicks "Demand Forecast"
+- This is the "Brain" of cross-page selection. It remembers what you picked on Page 1 even while you browse Page 10.
 
-### RBAC (Role-Based Access)
+### RBAC (Role-Based Access) - Enforced everywhere
+
+The `userRole` flows from `App.jsx` down to each page:
 
 ```
-userRole             → 'admin' | 'buyer' | 'supplier' (from currentUser)
 canCreate            → true if admin or supplier
 canEdit              → true if admin or supplier
 canDelete            → true if admin only
 ```
 
-- These control whether UI buttons are shown or hidden
-- The BACKEND also enforces these rules — the frontend just hides the buttons
+- These roles control the UI (buttons) and the Backend (API block).
 
 ---
 
@@ -325,88 +306,33 @@ If page=2, search="bottle", category="Outdoor & Sports"
 
 ---
 
-### 📄 `App.jsx` — THE BRAIN (435 lines)
+### 📄 `App.jsx` — The Router & Shell (161 lines)
 
-This is the biggest and most important file. It has two functions:
+`App.jsx` has been refactored! It no longer holds all the product logic. Now, its only job is to handle **Authentication** and **Routing**.
 
-#### `App()` (lines 418-434) — The outer shell
+- **App()**: The outer shell. It wraps everything in `HashRouter` and `Toaster`.
+- **AppInner()**:
+  - Checks if a user is logged in (`useEffect`).
+  - Syncs the `page` state with the URL.
+  - Renders the `Navbar` and `PageHeaderBar`.
+  - Uses `<Routes>` to swap between `ProductsPage` and `OptimizationPage`.
 
-```jsx
-function App() {
-  return (
-    <HashRouter>
-      <Toaster position="top-right" ... />  // Toast notifications
-      <AppInner />                           // The actual app
-    </HashRouter>
-  );
-}
-```
+---
 
-It wraps everything in a `HashRouter` (for URL routing) and adds the `Toaster` (for toast notifications).
+### 📄 `hooks/useProducts.js` — The Data Fetcher
 
-#### `AppInner()` (lines 40-416) — Where everything happens
+This is a custom hook that handles all the "heavy lifting" for fetching products. Instead of writing fetch logic inside every page, we use this hook.
 
-**This is the CENTRAL HUB. All state, all handlers, all rendering logic.**
+- **fetchProducts**: Talks to `productService` and updates state.
+- **Filtering**: Handles search, category, and price range filters.
+- **Pagination**: Keeps track of which page of results we are on.
 
-##### The Hooks Section (lines 41-72)
+### 📄 `hooks/useProductSelection.js` — The Memory
 
-All 20+ `useState` calls live here. This is the "brain's memory."
+This hook handles the checkboxes in the table.
 
-##### Route Sync (lines 74-95)
-
-Two `useEffect` hooks keep the `page` state synced with the URL:
-
-- If URL changes → update `page` state
-- On first load → check URL and set `page` accordingly
-
-##### Data Fetching (lines 97-133)
-
-```
-fetchProducts() ← useCallback
-  ↓ triggered by useEffect when page/search/category/filter changes
-  ↓ calls productService.getProducts(...)
-  ↓ updates products + pagination state
-
-fetchCategories() ← useCallback
-  ↓ triggered by useEffect when page changes
-  ↓ calls productService.getCategories()
-  ↓ updates categories state
-```
-
-##### Event Handlers (lines 135-224)
-
-Each handler follows the same pattern:
-
-```
-1. Call the API (productService.createProduct, etc.)
-2. On success: close modal + refresh data + show toast
-3. On error: show error toast
-```
-
-The most interesting one is `handleSelectionChange` (lines 165-184):
-
-```
-When user checks/unchecks a product:
-  1. Update selectedProductIds (the ID list)
-  2. Update selectedProductsMap:
-     - Loop through checked IDs → if product not in map, ADD it
-     - Loop through current page IDs → if unchecked, REMOVE it
-
-  This way, selecting on page 1 then going to page 2
-  doesn't lose your page 1 selections.
-```
-
-##### Rendering (lines 226-416)
-
-The `return` decides WHICH screen to show:
-
-```jsx
-if (page === 'login')        → return <LoginPage />
-if (page === 'landing')      → return <LandingPage />
-// Otherwise, show the main layout with Navbar + Header + Content:
-if (page === 'products')     → renderProductsPage()
-if (page === 'optimization') → renderOptimizationPage()
-```
+- **Persistence**: It keeps a `SelectedProductsMap` which saves product data. This is why you can select a product on Page 1, go to Page 5, and your first selection is still remembered!
+- **Bulk Forecast**: It kicks off the API call that computes and saves optimized prices.
 
 ---
 
@@ -615,17 +541,18 @@ allSelectedProducts = Object.values(selectedProductsMap)
 
 ## Quick Reference: "Where do I look for X?"
 
-| I want to understand...    | Look at...                                                               |
-| -------------------------- | ------------------------------------------------------------------------ |
-| How the app starts         | `main.jsx` → `App.jsx` (lines 418-434)                                   |
-| How login works            | `LoginPage.jsx` → `authService.js` → `api.js`                            |
-| How products load          | `App.jsx` fetchProducts (line 97) → `productService.js` getProducts      |
-| How search works           | `App.jsx` handleSearchChange (line 138) — 500ms debounce                 |
-| How RBAC hides buttons     | `App.jsx` lines 68-72 (canCreate/canEdit/canDelete)                      |
-| How selections persist     | `App.jsx` handleSelectionChange (line 165) + selectedProductsMap         |
-| How forecast is calculated | `App.jsx` handleDemandForecast (line 189)                                |
-| How toasts show            | `App.jsx` — toast.success() / toast.error() from react-hot-toast         |
-| How the table renders      | `ProductTable.jsx` — gets products as prop, maps to rows                 |
-| How the chart renders      | `DemandForecastModal.jsx` — gets products as prop, uses Chart.js         |
-| How JWT tokens flow        | `api.js` request interceptor (line 20) — auto-attaches from localStorage |
-| How errors are handled     | `api.js` response interceptor (line 32) — 401 → force re-login           |
+| I want to understand...   | Look at...                                                               |
+| ------------------------- | ------------------------------------------------------------------------ |
+| How the app starts        | `main.jsx` → `App.jsx`                                                   |
+| How login works           | `LoginPage.jsx` → `authService.js` → `api.js`                            |
+| How products load         | `hooks/useProducts.js` → `productService.js`                             |
+| How search works          | `hooks/useProducts.js` handleSearchChange (500ms debounce)               |
+| How RBAC hides buttons    | `pages/ProductsPage.jsx` lines 49-51 (canCreate/canEdit/canDelete)       |
+| How selections persist    | `hooks/useProductSelection.js` (selectedProductsMap)                     |
+| How forecast is saved     | `hooks/useProductSelection.js` handleDemandForecast                      |
+| How toasts show           | `App.jsx` — `Toaster` configuration + `toast.success()` calls everywhere |
+| How the table renders     | `ProductTable.jsx` — gets products as prop, maps to rows                 |
+| How the chart renders     | `DemandForecastModal.jsx` — gets products as prop, uses Chart.js         |
+| How JWT tokens flow       | `api.js` request interceptor — auto-attaches from localStorage           |
+| How errors are handled    | `api.js` response interceptor — 401 → force re-login                     |
+| How screens are separated | `pages/ProductsPage.jsx` and `pages/OptimizationPage.jsx`                |
