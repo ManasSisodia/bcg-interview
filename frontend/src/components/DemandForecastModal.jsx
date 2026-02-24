@@ -9,88 +9,21 @@ import React from 'react';
 import { X } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
-  Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement,
+  Chart as ChartJS, CategoryScale, LinearScale, LogarithmicScale, PointElement, LineElement,
   Title, Tooltip as ChartTooltip, Legend, Filler,
 } from 'chart.js';
+import { getDemandForecastChartData, demandForecastChartOptions } from '../utils/chartConfig';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from './ui/table';
 
 // Register Chart.js components
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, ChartTooltip, Legend, Filler);
+ChartJS.register(CategoryScale, LinearScale, LogarithmicScale, PointElement, LineElement, Title, ChartTooltip, Legend, Filler);
 
 const DemandForecastModal = ({ isOpen, onClose, products = [] }) => {
   if (!isOpen) return null;
 
-  const labels = products.map((p, idx) =>
-    p.name?.length > 14 ? `Product ${idx + 1}` : p.name
-  );
-
-  const chartData = {
-    labels,
-    datasets: [
-      {
-        label: 'Product Demand',
-        data: products.map((p) => p.demand_forecast || 0),
-        borderColor: '#8B5CF6',
-        backgroundColor: 'rgba(139, 92, 246, 0.1)',
-        borderWidth: 2.5,
-        pointRadius: 4,
-        pointBackgroundColor: '#8B5CF6',
-        tension: 0.3,
-        fill: true,
-      },
-      {
-        label: 'Selling Price',
-        data: products.map((p) => parseFloat(p.selling_price) || 0),
-        borderColor: '#14B8A6',
-        backgroundColor: 'rgba(20, 184, 166, 0.1)',
-        borderWidth: 2.5,
-        pointRadius: 4,
-        pointBackgroundColor: '#14B8A6',
-        tension: 0.3,
-        fill: true,
-      },
-    ],
-  };
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'bottom',
-        labels: {
-          color: '#9CA3AF',
-          font: { size: 12, family: 'Inter' },
-          usePointStyle: true,
-          pointStyle: 'circle',
-          padding: 20,
-        },
-      },
-      tooltip: {
-        backgroundColor: '#1F2937',
-        titleColor: '#E5E7EB',
-        bodyColor: '#E5E7EB',
-        borderColor: '#243041',
-        borderWidth: 1,
-        cornerRadius: 8,
-        padding: 12,
-        titleFont: { size: 12 },
-        bodyFont: { size: 12 },
-      },
-    },
-    scales: {
-      x: {
-        ticks: { color: '#9CA3AF', font: { size: 11 } },
-        grid: { color: '#243041', drawBorder: false },
-      },
-      y: {
-        ticks: { color: '#9CA3AF', font: { size: 11 } },
-        grid: { color: '#243041', drawBorder: false },
-      },
-    },
-  };
+  const chartData = getDemandForecastChartData(products);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center" onClick={onClose}>
@@ -113,7 +46,7 @@ const DemandForecastModal = ({ isOpen, onClose, products = [] }) => {
         <div className="p-6">
           <div className="rounded-xl border border-border bg-background p-4">
             <div style={{ height: '280px' }}>
-              <Line data={chartData} options={chartOptions} />
+              <Line data={chartData} options={demandForecastChartOptions} />
             </div>
           </div>
         </div>

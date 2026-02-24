@@ -10,6 +10,7 @@ Models:
 """
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator
 
 
 # ═══════════════════════════════════════════
@@ -108,12 +109,14 @@ class Product(models.Model):
     cost_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
+        validators=[MinValueValidator(0.0)],
         help_text="How much it costs to make/buy this product"
     )
     selling_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         db_index=True,
+        validators=[MinValueValidator(0.0)],
         help_text="Current selling price to customers"
     )
     category = models.CharField(
@@ -122,20 +125,27 @@ class Product(models.Model):
         help_text="Product category (e.g., 'Electronics', 'Apparel')"
     )
     stock_available = models.IntegerField(
+        validators=[MinValueValidator(0)],
         help_text="How many units are currently in stock"
     )
     units_sold = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
         help_text="Total units sold so far"
     )
     customer_rating = models.IntegerField(
+        default=4,
         help_text="Average customer rating (1-5)"
     )
     demand_forecast = models.IntegerField(
+        default=0,
         help_text="Predicted future demand (units)"
     )
     optimized_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0.0)],
         help_text="AI-recommended optimal selling price"
     )
 

@@ -21,11 +21,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
-from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth import authenticate
+from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth.models import User
+import logging
 
 from .models import Product, Role, UserProfile
+from .services import bulk_update_forecasts
 from .serializers import (
     ProductSerializer,
     RoleSerializer,
@@ -56,10 +58,6 @@ class RoleBasedProductPermission(permissions.BasePermission):
     - Supplier → Read + Update (GET, PUT, PATCH)
     """
     def has_permission(self, request, view):
-        # Allow unauthenticated read access for development
-        if request.method in permissions.SAFE_METHODS:
-            return True
-
         if not request.user.is_authenticated:
             return False
 
@@ -118,10 +116,15 @@ class ProductViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         min_price = self.request.query_params.get('min_price')
         max_price = self.request.query_params.get('max_price')
+        is_optimized = self.request.query_params.get('is_optimized')
+        
         if min_price:
             qs = qs.filter(selling_price__gte=min_price)
         if max_price:
             qs = qs.filter(selling_price__lte=max_price)
+        if is_optimized == 'true':
+            qs = qs.filter(optimized_price__gt=0.00)
+            
         return qs
 
 
@@ -142,18 +145,12 @@ class BulkForecastView(APIView):
         if not items:
             return Response({'detail': 'No products provided.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        updated = 0
-        for item in items:
-            try:
-                product = Product.objects.get(id=item['id'])
-                product.demand_forecast = item.get('demand_forecast', product.demand_forecast)
-                product.optimized_price = item.get('optimized_price', product.optimized_price)
-                product.save(update_fields=['demand_forecast', 'optimized_price'])
-                updated += 1
-            except Product.DoesNotExist:
-                continue
+        updated_count = bulk_update_forecasts(items)
 
-        return Response({'detail': f'{updated} product(s) updated.'}, status=status.HTTP_200_OK)
+        if updated_count == 0:
+            return Response({'detail': 'No products were updated.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({'detail': f'{updated_count} product(s) updated.'}, status=status.HTTP_200_OK)
 
 
 # ═══════════════════════════════════════════

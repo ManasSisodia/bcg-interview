@@ -12,6 +12,7 @@ We have serializers for:
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import Product, Role, UserProfile
+from .services import get_next_product_id
 
 
 # ═══════════════════════════════════════════
@@ -31,28 +32,24 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = '__all__'
 
+    def validate(self, data):
+        """Cross-field validation."""
+        cost = data.get('cost_price')
+        selling = data.get('selling_price')
+        
+        if cost is not None and selling is not None:
+            if cost > selling:
+                raise serializers.ValidationError({
+                    "cost_price": "Cost price cannot be greater than selling price."
+                })
+        return data
+
     def create(self, validated_data):
-        # Auto-generate product_id (max existing + 1)
-        if 'product_id' not in validated_data or validated_data['product_id'] is None:
-            max_id = Product.objects.order_by('-product_id').values_list('product_id', flat=True).first()
-            validated_data['product_id'] = (max_id or 0) + 1
-
-        # Default customer_rating
-        if 'customer_rating' not in validated_data:
-            validated_data['customer_rating'] = 4
-
-        # demand_forecast and optimized_price default to 0
-        # They are calculated on the frontend via Demand Forecast action
-        if 'demand_forecast' not in validated_data or validated_data['demand_forecast'] is None:
-            validated_data['demand_forecast'] = 0
-
-        if 'optimized_price' not in validated_data or validated_data['optimized_price'] is None:
-            validated_data['optimized_price'] = 0
+        # Auto-generate product_id if not provided
+        if not validated_data.get('product_id'):
+            validated_data['product_id'] = get_next_product_id()
 
         return super().create(validated_data)
-
-    def update(self, instance, validated_data):
-        return super().update(instance, validated_data)
 
 
 # ═══════════════════════════════════════════

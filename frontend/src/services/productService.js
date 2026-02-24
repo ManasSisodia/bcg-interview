@@ -19,13 +19,14 @@ const productService = {
    * @param {Object} params — { page, search, category }
    * @returns {{ results: Array, count: number, next: string|null, previous: string|null }}
    */
-  async getProducts({ page = 1, search = '', category = '', min_price = '', max_price = '' } = {}) {
+  async getProducts({ page = 1, search = '', category = '', min_price = '', max_price = '', is_optimized = '' } = {}) {
     const params = new URLSearchParams();
     params.set('page', page);
     if (search) params.set('search', search);
     if (category) params.set('category', category);
     if (min_price) params.set('min_price', min_price);
     if (max_price) params.set('max_price', max_price);
+    if (is_optimized) params.set('is_optimized', is_optimized);
 
     const response = await api.get(`/products/?${params.toString()}`);
     const data = response.data;
