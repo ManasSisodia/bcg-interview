@@ -45,11 +45,9 @@ export const useProducts = ({ isOptimized = false } = {}) => {
   const fetchCategories = useCallback(async () => {
     try {
       const data = await productService.getCategories();
-      let uniqueCats = [];
-      if (Array.isArray(data.results)) {
-        uniqueCats = [...new Set(data.results.map((p) => p.category).filter(Boolean))];
+      if (Array.isArray(data)) {
+        setCategories(data.sort());
       }
-      setCategories(uniqueCats.sort());
     } catch (err) {
       // Non-critical, fail silently regarding toast
     }
@@ -65,7 +63,8 @@ export const useProducts = ({ isOptimized = false } = {}) => {
     }, 500);
   }, []);
 
-  const handleCategoryChange = useCallback((val) => {
+  const handleCategoryChange = useCallback((eOrVal) => {
+    const val = eOrVal?.target ? eOrVal.target.value : eOrVal;
     setCategoryFilter(val === 'all' ? '' : val);
     setCurrentPageNum(1);
   }, []);

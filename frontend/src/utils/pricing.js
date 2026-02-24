@@ -27,11 +27,11 @@ export const calculateOptimizedPrice = (product, newDemandForecast) => {
   if (cPrice >= sPrice) return cPrice; // Edge case: selling at a loss
 
   const originalMargin = sPrice - cPrice;
-  const originalDemand = parseInt(product.demand_forecast, 10) || 1;
+  const historicalSales = parseInt(product.units_sold, 10) || 1;
 
-  // Ratio of expected future demand vs historical demand forecast
+  // Ratio of expected future demand vs historical actual sales
   // Cap ratio between 0.5 (bad) and 2.0 (great) to prevent wild swings
-  let ratio = newDemandForecast / (originalDemand === 0 ? 1 : originalDemand);
+  let ratio = newDemandForecast / historicalSales;
   ratio = Math.max(0.5, Math.min(ratio, 2.0));
 
   // Demand multiplier: 0.7 base + 0.3 variable based on demand
